@@ -1,6 +1,7 @@
 # Holman Python SDK
-[Holman CO3015](https://www.holmanindustries.com.au/products/bluetooth-tap-timer-co3015/)
-and [BTX1](https://www.holmanindustries.com.au/products/btx1-tap-mounted-smart-valve/) are Bluetooth tap timers made by [Holman](https://www.holmanindustries.com.au/).
+[Holman CO3015](https://www.holmanindustries.com.au/products/bluetooth-tap-timer-co3015/),
+[BTX1](https://www.holmanindustries.com.au/products/btx1-tap-mounted-smart-valve/),
+and [BTX2](https://www.holmanindustries.com.au/products/btx2-dual-outlet-bluetooth-tap-timer/) are Bluetooth tap timers made by [Holman](https://www.holmanindustries.com.au/).
 
 The Holman Python SDK for Linux allows you to integrate your Holman(s) into any type of Linux application or script that can execute Python code.
 
@@ -97,6 +98,21 @@ manager.start_discovery()
 manager.run()
 ```
 
+### Configuring accepted device aliases
+
+By default the SDK accepts devices whose advertised alias starts with `Tap` or `BX`. You can override this with the `accepted_alias_prefixes` constructor argument or the `HOLMAN_ACCEPTED_ALIAS_PREFIXES` environment variable (comma-separated).
+
+```python
+manager = holman.TapTimerManager(
+    adapter_name='hci0',
+    accepted_alias_prefixes=('Tap', 'BX', 'Holman'))
+```
+
+```bash
+export HOLMAN_ACCEPTED_ALIAS_PREFIXES="Tap,BX,Holman"
+sudo holmanctl --discover
+```
+
 ### Connecting to a Holman tap timer and receiving user input events
 
 Once `TapTimerManager` has discovered a Holman tap timer you can use the `TapTimer` object(s) that you retrieved from `TapTimerManager.tap_timers()` to connect to it. Alternatively you can create a new instance of `TapTimer` using the name of your Bluetooth adapter (typically `hci0`) and Holman's MAC address.
@@ -121,7 +137,21 @@ As with Holman tap timer discovery, remember to start the Bluetooth event loop w
 
 ### Start the tap running
 
-Once a Holman tap timer is connected you can start the tap with `TapTimer.start(runtime=1)`.  Pass this a runtime (in minutes) for how long to run the tap.
+Once a Holman tap timer is connected you can start the tap with `TapTimer.start(runtime=1)`. Pass a runtime in minutes. On dual-outlet BX2/BTX2 units, pass `zone=1` or `zone=2`:
+
+```python
+tap_timer.start(runtime=5, zone=1)
+tap_timer.stop()
+```
+
+From the CLI:
+
+```
+sudo holmanctl --start AA:BB:CC:DD:EE:FF --minutes 5 --zone 1
+sudo holmanctl --stop AA:BB:CC:DD:EE:FF
+```
+
+See [docs/BX2.md](docs/BX2.md) for the BX2 GATT notes (zones, unlock, what not to read).
 
 ## Support
 
