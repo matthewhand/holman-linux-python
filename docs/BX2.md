@@ -1,23 +1,26 @@
 # Holman BX2 notes
 
-Field notes from bringing a Holman **BX2** (dual outlet, advertised name `BX2`) up with this SDK. Useful before a PR or another integration.
+Field notes from bringing a Holman **BX2** (dual outlet, advertised name `BX2`) up with this SDK. Useful before a PR or another integration. No device addresses, credentials, or site-specific outlet names belong in this tree.
+
+`AE 8E` is a shared session unlock also used by public BX1 ESPHome configs, not a per-device secret.
 
 ## Identity
 
 - Advertised alias starts with `BX`, not `Tap Timer`. Discovery must accept that prefix.
 - The unit we tested advertised vendor service `c521f000-0d70-4d4f-8e43-40d84c50ab38` (this repo already labelled that UUID as BTX1 / CO3011). Another BTX2 UUID (`aacaebbb-…`) is listed here but was **not** seen on that BX2.
 - Manufacturer company id `0x0374`. BLE address type is **random**.
+- Scan advertisements often carry the name and company id only. Do **not** require the vendor service UUID in the advert packet; resolve GATT after connect. That is why `TapTimerManager.start_discovery()` no longer passes `service_uuids=`.
 
 ## GATT (safe)
 
 | UUID | Role |
 | --- | --- |
 | `c521f000-…` | Vendor service |
-| `0000c001-…` | Write. Session unlock `AE 8E` (same 2-byte passcode used by BX1 ESPHome adapters). |
+| `0000c001-…` | Write. Session unlock `AE 8E`. |
 | `0000f006-…` | Write. Manual start/stop. |
 | `0000f004-…` | Read. 12-byte state. Last byte `01` means running **when the official app started the valve**. |
 
-`start()` / `stop()` now send the unlock when `c001` is present.
+`start()` / `stop()` send the unlock when `c001` is present.
 
 ## Manual payload
 
@@ -27,20 +30,28 @@ Field notes from bringing a Holman **BX2** (dual outlet, advertised name `BX2`) 
 [zone, 0x00, 0x00, minutes]
 ```
 
-- `zone` is `1` or `2` (outlet).
+- `zone` is `1` or `2` (physical outlet). `01` is outlet 1, `02` is outlet 2. Confirmed by starting each outlet from the official app and from this SDK, then watching which valve opened.
 - `minutes` is `1…255`.
-- Stop is `00 00 00 00`.
+- Stop is `00 00 00 00` (all-off, both outlets).
+- Zone `1` matches the original single-outlet SDK ON payload `01 00 00 <mins>`. BX1 stays compatible if callers leave `zone` at the default `1`.
 
-This matches the original single-outlet SDK when `zone=1` (`01 00 00 <mins>`).
+A 10-byte ESPHome-style pad (`01 00 00 mins` + six zeros) is accepted if written **without** response. A 10-byte write **with** response returned ATT `0x0e` and dropped the link. Prefer the 4-byte form.
 
-A 10-byte ESPHome-style pad (`01 00 00 mins` + six zeros) is accepted if written **without** response. A 10-byte write **with** response returned ATT `0x0e` and dropped the link.
+If a 4-byte write **with** response fails (ATT `0x0e`), retry **without** response. That is common while a run is already active.
+
+## Dual outlet behaviour
+
+- The tap can run **one outlet at a time**. Starting zone 2 while zone 1 is open is not a second concurrent valve.
+- To switch outlets: write stop (`00 00 00 00`), then start the other zone. A start-while-running write with response often errors; stop first.
+- There is no extra “reset” characteristic required after a manual run. Stop is the all-zero `f006` write.
 
 ## What not to do
 
 - **Do not read `0000e002-…`.** That drops the connection.
-- While a run is active, a 4-byte `f006` write **with response** often returns ATT `0x0e`. Stop first, or use write-without-response, then start the other zone.
-- First LE connect often fails with `le-connection-abort-by-local` / “failed to discover services, device disconnected”. Retry. Two clients (e.g. Home Assistant Bluetooth + `bluetoothctl`) racing the same adapter makes this worse.
+- Reading `f004` without a prior `c001` unlock can also return ATT `0x0e` and drop the link.
+- First LE connect often fails with `le-connection-abort-by-local` / “failed to discover services, device disconnected”. Retry. Two clients (Home Assistant Bluetooth + `bluetoothctl`, or two phones plus the SDK) racing the same adapter makes this worse.
 - `f004` last byte is **not a reliable “water is flowing” flag** after an SDK write. The official app sets it to `01`. Our 4-byte start can open the valve while last byte stays `00`. Treat a successful write as optimistic; confirm physically if it matters.
+- A successful GATT write can still look dry if that outlet’s hose or nozzle is blocked. Confirm water, not only BLE ACKs. We spent a long time permuting payloads before finding a blocked hose.
 
 ## Other characteristics
 
@@ -50,11 +61,24 @@ Seen on the same service, not required for manual run:
 - `f005`, `e001`, `c002` — read/write. Unlock may be required. Not needed for start/stop.
 - `46a60001-ca26-425a-9bc6-d917829d2906` — write + notify. Untouched.
 
-Reading `f004` without a prior `c001` unlock can return ATT `0x0e` and drop the link.
+## App pairing vs session unlock
 
-## App pairing
+BlueZ `Paired`/`Bonded` can stay **no**. The Holman app still talks to the timer. Multiple phones can start a **manual** run at the same time. `AE 8E` is a session unlock, not exclusive SMP pairing.
 
-BlueZ `Paired`/`Bonded` can stay **no**. The Holman app still talks to the timer. Multiple phones can start a manual run. `AE 8E` is a session unlock, not exclusive SMP pairing. The printed manual’s “one smartphone” line is about scheduling ownership, not a hard lock on manual GATT writes.
+The printed manual’s “one smartphone” line is about **scheduling ownership**, not a hard lock on manual GATT writes. The physical dial can still disable onboard schedules; that does not block these manual `f006` writes.
+
+## Suggested PR surface
+
+Keep a future upstream PR to the behaviour change, not this whole note:
+
+1. Accept `BX*` aliases (and optionally `HOLMAN_ACCEPTED_ALIAS_PREFIXES`).
+2. Discover by alias, not advertised service UUID.
+3. Unlock `c001` with `AE 8E` when the characteristic exists.
+4. `start(runtime, zone=1)` writes `[zone, 0, 0, mins]`; `stop()` writes zeros.
+5. CLI `--start` / `--stop` / `--minutes` / `--zone`.
+6. README mention of BTX2 / BX2 and a link here.
+
+Leave Home Assistant bindings, retries, outlet nicknames, and site addresses out of the SDK.
 
 ## CLI
 
@@ -63,5 +87,3 @@ holmanctl --discover
 holmanctl --start AA:BB:CC:DD:EE:FF --minutes 2 --zone 1
 holmanctl --stop  AA:BB:CC:DD:EE:FF
 ```
-
-No device addresses, credentials, or site-specific outlet names belong in this tree.
