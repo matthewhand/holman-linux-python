@@ -149,6 +149,15 @@ From the CLI:
 ```
 sudo holmanctl --start AA:BB:CC:DD:EE:FF --minutes 5 --zone 1
 sudo holmanctl --stop AA:BB:CC:DD:EE:FF
+sudo holmanctl --debug --start AA:BB:CC:DD:EE:FF --minutes 5 --zone 2
+```
+
+`--debug` logs the f006 write as hex (`01010005` for Hose, 5 minutes). Unknown `--zone` values are refused.
+
+Payload helpers are pure functions (`holman.payload.manual_payload`) and have unit tests that do not need Bluetooth:
+
+```
+python3 -m unittest discover -s tests -v
 ```
 
 See [docs/BX2.md](docs/BX2.md) for the BX2 GATT notes (zones, unlock, what not to read) and [docs/homeassistant-example.md](docs/homeassistant-example.md) for a generic Home Assistant / Lovelace sketch (zone 1 Grass, zone 2 Hose; no site addresses).

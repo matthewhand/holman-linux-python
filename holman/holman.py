@@ -1,19 +1,14 @@
 """
 Module for managing Holman Bluetooth tap timers.
 """
-import os
+import logging
 
 import gatt
 
+from .aliases import get_default_alias_prefixes
+from .payload import manual_payload, tap_name
 
-_DEFAULT_ALIAS_PREFIXES = ('Tap', 'BX')
-
-
-def _get_default_alias_prefixes():
-    env = os.environ.get('HOLMAN_ACCEPTED_ALIAS_PREFIXES')
-    if env:
-        return tuple(p.strip() for p in env.split(',') if p.strip())
-    return _DEFAULT_ALIAS_PREFIXES
+_LOGGER = logging.getLogger(__name__)
 
 
 class TapTimerManager(gatt.DeviceManager):
@@ -36,7 +31,7 @@ class TapTimerManager(gatt.DeviceManager):
         # DeviceManager.__init__ calls update_devices() -> make_device(),
         # which reads accepted_alias_prefixes.
         if accepted_alias_prefixes is None:
-            accepted_alias_prefixes = _get_default_alias_prefixes()
+            accepted_alias_prefixes = get_default_alias_prefixes()
         self.accepted_alias_prefixes = tuple(accepted_alias_prefixes)
         self.listener = None
         self.discovered_tap_timers = {}
@@ -246,29 +241,29 @@ class TapTimer(gatt.Device):
         '''
         Turn on the tap for ``runtime`` minutes.
 
-        f006 start is ``[0x01, tap, 0x00, minutes]``. Byte 0 is on/off
-        (always 0x01 for start). Byte 1 is the outlet: 0x00 Grass
-        (zone 1), 0x01 Hose (zone 2). Hose is hex ``010100NN``.
-
-        Do not write the zone number into byte 0. ``[0x02, 0x00, 0x00,
-        mins]`` ACKs and stays dry. ``[0x01, 0x02, 0x00, mins]`` is the
-        same: ACK, no jet. BX1 is a single outlet; zone 1 matches the
-        original SDK ON payload ``01 00 00 <mins>``.
+        Builds the same 4-byte f006 payload as ``manual_payload``:
+        Grass ``[0x01, 0x00, 0x00, mins]``, Hose ``[0x01, 0x01, 0x00, mins]``.
+        Unknown zones raise ``ValueError`` (fail closed). Runtime is
+        clamped to 1..255. Missing f006 raises ``RuntimeError``.
         '''
-        runtime = 255 if runtime > 255 else max(1, int(runtime))
-        zone = max(1, min(int(zone), 2))
-        tap = 0x00 if zone == 1 else 0x01
+        value = manual_payload(True, runtime, zone)
+        _LOGGER.debug(
+            'f006 write {} zone={} name={}'.format(
+                value.hex(), zone, tap_name(zone)),
+        )
         self._unlock()
-        if self._manual_characteristic:
-            value = bytes([0x01, tap, 0x00, runtime])
-            self._manual_characteristic.write_value(value)
+        if not self._manual_characteristic:
+            raise RuntimeError('Holman GATT characteristic f006 missing')
+        self._manual_characteristic.write_value(value)
 
     def stop(self):
-        """Turn off the tap."""
+        '''Turn off the tap (all-zero f006).'''
+        value = manual_payload(False)
+        _LOGGER.debug('f006 write {} stop'.format(value.hex()))
         self._unlock()
-        if self._manual_characteristic:
-            value = bytes([0x00, 0x00, 0x00, 0x00])
-            self._manual_characteristic.write_value(value)
+        if not self._manual_characteristic:
+            raise RuntimeError('Holman GATT characteristic f006 missing')
+        self._manual_characteristic.write_value(value)
 
     def characteristic_write_value_succeeded(self, characteristic):
         self._refresh_state()
