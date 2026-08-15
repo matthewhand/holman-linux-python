@@ -242,7 +242,7 @@ class TapTimer(gatt.Device):
         Turn on the tap for ``runtime`` minutes.
 
         Builds the same 4-byte f006 payload as ``manual_payload``:
-        Grass ``[0x01, 0x00, 0x00, mins]``, Hose ``[0x01, 0x01, 0x00, mins]``.
+        Sprinkler ``[0x01, 0x00, 0x00, mins]``, Hose ``[0x01, 0x01, 0x00, mins]``.
         Unknown zones raise ``ValueError`` (fail closed). Runtime is
         clamped to 1..255. Missing f006 raises ``RuntimeError``.
         '''

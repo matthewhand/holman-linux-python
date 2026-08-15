@@ -102,7 +102,7 @@ def main():
         type=str,
         help="Connect and send all-off")
     arg_parser.add_argument('--minutes', type=int, default=2, help="Minutes for --start")
-    arg_parser.add_argument('--zone', type=int, default=1, help="Outlet 1 Grass or 2 Hose (BX2). Default 1")
+    arg_parser.add_argument('--zone', type=int, default=1, help="Outlet 1 Sprinkler or 2 Hose (BX2). Default 1")
     arg_parser.add_argument(
         '--debug', action='store_true',
         help='Log f006 write hex and BLE debug to stderr')

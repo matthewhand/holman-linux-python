@@ -27,11 +27,14 @@ get_default_alias_prefixes = aliases.get_default_alias_prefixes
 
 
 class TestManualPayload(unittest.TestCase):
-    def test_start_zone_1_grass(self):
+    def test_start_sprinkler(self):
         self.assertEqual(list(manual_payload(True, 3, 1)), [0x01, 0x00, 0x00, 3])
 
-    def test_start_zone_2_hose(self):
+    def test_start_hose(self):
         self.assertEqual(list(manual_payload(True, 1, 2)), [0x01, 0x01, 0x00, 1])
+
+    def test_hose_payload_bytes(self):
+        self.assertEqual(list(manual_payload(True, 5, 2)), [0x01, 0x01, 0x00, 5])
 
     def test_stop_all_zero(self):
         self.assertEqual(list(manual_payload(False, 10, 2)), [0x00, 0x00, 0x00, 0x00])
@@ -53,17 +56,10 @@ class TestManualPayload(unittest.TestCase):
         with self.assertRaises(ValueError):
             tap_for_zone('hose')
 
-    def test_never_emits_0x02_as_hose(self):
-        grass = list(manual_payload(True, 5, 1))
-        hose = list(manual_payload(True, 5, 2))
-        self.assertNotIn(0x02, grass)
-        self.assertNotIn(0x02, hose)
-        self.assertEqual(hose, [0x01, 0x01, 0x00, 5])
-
     def test_tap_helpers(self):
         self.assertEqual(tap_for_zone(1), 0x00)
         self.assertEqual(tap_for_zone(2), 0x01)
-        self.assertEqual(tap_name(1), 'Grass')
+        self.assertEqual(tap_name(1), 'Sprinkler')
         self.assertEqual(tap_name(2), 'Hose')
 
 

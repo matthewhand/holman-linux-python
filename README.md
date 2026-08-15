@@ -137,7 +137,7 @@ As with Holman tap timer discovery, remember to start the Bluetooth event loop w
 
 ### Start the tap running
 
-Once a Holman tap timer is connected you can start the tap with `TapTimer.start(runtime=1)`. Pass a runtime in minutes. On dual-outlet BX2/BTX2 units, pass `zone=1` (Grass, `[0x01, 0x00, 0x00, mins]`) or `zone=2` (Hose, `[0x01, 0x01, 0x00, mins]`). Byte 1 is the outlet. Do not put `0x02` in byte 0 or byte 1 — those writes ACK and stay dry.
+Once a Holman tap timer is connected you can start the tap with `TapTimer.start(runtime=1)`. Pass a runtime in minutes. On dual-outlet BX2/BTX2 units, pass `zone=1` (Sprinkler, tap 0, `[0x01, 0x00, 0x00, mins]`) or `zone=2` (Hose, tap 1, `[0x01, 0x01, 0x00, mins]`). Byte 1 is the outlet.
 
 ```python
 tap_timer.start(runtime=5, zone=1)
@@ -160,7 +160,7 @@ Payload helpers are pure functions (`holman.payload.manual_payload`) and have un
 python3 -m unittest discover -s tests -v
 ```
 
-See [docs/BX2.md](docs/BX2.md) for the BX2 GATT notes (zones, unlock, what not to read) and [docs/homeassistant-example.md](docs/homeassistant-example.md) for a generic Home Assistant / Lovelace sketch (zone 1 Grass, zone 2 Hose; no site addresses).
+See [docs/BX2.md](docs/BX2.md) for the BX2 GATT notes (zones, unlock, what not to read) and [docs/homeassistant-example.md](docs/homeassistant-example.md) for a generic Home Assistant / Lovelace sketch (Sprinkler / Hose; no site addresses).
 
 ## Support
 
