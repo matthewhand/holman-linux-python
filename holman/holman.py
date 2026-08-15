@@ -246,14 +246,10 @@ class TapTimer(gatt.Device):
         '''
         Turn on the tap for ``runtime`` minutes.
 
-        f006 start is ``[0x01, tap, 0x00, minutes]``. Byte 0 is on/off
-        (always 0x01 for start). Byte 1 is the outlet: 0x00 Grass
-        (zone 1), 0x01 Hose (zone 2). Hose is hex ``010100NN``.
-
-        Do not write the zone number into byte 0. ``[0x02, 0x00, 0x00,
-        mins]`` ACKs and stays dry. ``[0x01, 0x02, 0x00, mins]`` is the
-        same: ACK, no jet. BX1 is a single outlet; zone 1 matches the
-        original SDK ON payload ``01 00 00 <mins>``.
+        f006 start is ``[0x01, tap, 0x00, minutes]``. Byte 0 is on
+        (0x01). Byte 1 is the outlet: tap 0x00 is zone 1, tap 0x01 is
+        zone 2 (hex ``010100NN``). Zone 1 matches the original SDK ON
+        payload ``01 00 00 <mins>``.
         '''
         runtime = 255 if runtime > 255 else max(1, int(runtime))
         zone = max(1, min(int(zone), 2))

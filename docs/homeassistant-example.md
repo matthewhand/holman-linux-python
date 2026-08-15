@@ -1,18 +1,14 @@
 # Home Assistant / Lovelace example (generic)
 
-Zone 1 = Grass. Zone 2 = Hose. One outlet at a time. No site IPs or MACs.
+Zone 1 = tap 0. Zone 2 = tap 1. One outlet at a time. No site IPs or MACs.
 
-f006 start bytes used by this SDK (and by a `holman_bt` custom component that
-speaks the same GATT):
+f006 start bytes used by this SDK:
 
-| Zone | Name | Start | Hex |
+| Zone | Tap | Start | Hex |
 | --- | --- | --- | --- |
-| 1 | Grass | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
-| 2 | Hose | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
-| — | Stop | `[0x00, 0x00, 0x00, 0x00]` | `00000000` |
-
-Do not send `0x02` as Hose. `[0x02, 0x00, 0x00, mins]` and
-`[0x01, 0x02, 0x00, mins]` both ACK and stay dry.
+| 1 | 0 | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
+| 2 | 1 | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
+| — | — | Stop `[0x00, 0x00, 0x00, 0x00]` | `00000000` |
 
 ## Package snippet
 
@@ -25,8 +21,8 @@ holman_bt:
 
 ## Lovelace cards
 
-Entities are named from the device name plus Grass / Hose
-(`switch.holman_bx2_grass`, `switch.holman_bx2_hose`).
+Entities are named from the device name plus zone
+(`switch.holman_bx2_zone_1`, `switch.holman_bx2_zone_2`).
 
 ```yaml
 type: vertical-stack
@@ -36,17 +32,17 @@ cards:
     entities:
       - entity: number.holman_bx2_runtime
         name: Minutes
-      - entity: switch.holman_bx2_grass
-        name: Grass
-        icon: mdi:grass
-      - entity: switch.holman_bx2_hose
-        name: Hose
-        icon: mdi:hose
+      - entity: switch.holman_bx2_zone_1
+        name: Zone 1
+        icon: mdi:sprinkler
+      - entity: switch.holman_bx2_zone_2
+        name: Zone 2
+        icon: mdi:sprinkler
   - type: horizontal-stack
     cards:
       - type: button
-        name: Start Grass
-        icon: mdi:grass
+        name: Start Zone 1
+        icon: mdi:sprinkler
         tap_action:
           action: call-service
           service: holman_bt.start
@@ -54,8 +50,8 @@ cards:
             zone: 1
             minutes: 5
       - type: button
-        name: Start Hose
-        icon: mdi:hose
+        name: Start Zone 2
+        icon: mdi:sprinkler
         tap_action:
           action: call-service
           service: holman_bt.start
