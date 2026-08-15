@@ -1,14 +1,14 @@
 # Home Assistant / Lovelace example (generic)
 
-Zone 1 = tap 0. Zone 2 = tap 1. One outlet at a time. No site IPs or MACs.
+Sprinkler = tap 0. Hose = tap 1. One outlet at a time. No site IPs or MACs.
 
 f006 start bytes used by this SDK:
 
-| Zone | Tap | Start | Hex |
+| Tap | Name | Start | Hex |
 | --- | --- | --- | --- |
-| 1 | 0 | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
-| 2 | 1 | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
-| — | — | Stop `[0x00, 0x00, 0x00, 0x00]` | `00000000` |
+| 0 | Sprinkler | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
+| 1 | Hose | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
+| — | Stop | `[0x00, 0x00, 0x00, 0x00]` | `00000000` |
 
 ## Package snippet
 
@@ -21,8 +21,8 @@ holman_bt:
 
 ## Lovelace cards
 
-Entities are named from the device name plus zone
-(`switch.holman_bx2_zone_1`, `switch.holman_bx2_zone_2`).
+Entities are named from the device name plus the tap
+(`switch.holman_bx2_sprinkler`, `switch.holman_bx2_hose`).
 
 ```yaml
 type: vertical-stack
@@ -32,16 +32,16 @@ cards:
     entities:
       - entity: number.holman_bx2_runtime
         name: Minutes
-      - entity: switch.holman_bx2_zone_1
-        name: Zone 1
+      - entity: switch.holman_bx2_sprinkler
+        name: Sprinkler
         icon: mdi:sprinkler
-      - entity: switch.holman_bx2_zone_2
-        name: Zone 2
-        icon: mdi:sprinkler
+      - entity: switch.holman_bx2_hose
+        name: Hose
+        icon: mdi:hose
   - type: horizontal-stack
     cards:
       - type: button
-        name: Start Zone 1
+        name: Start Sprinkler
         icon: mdi:sprinkler
         tap_action:
           action: call-service
@@ -50,8 +50,8 @@ cards:
             zone: 1
             minutes: 5
       - type: button
-        name: Start Zone 2
-        icon: mdi:sprinkler
+        name: Start Hose
+        icon: mdi:hose
         tap_action:
           action: call-service
           service: holman_bt.start
