@@ -243,18 +243,24 @@ class TapTimer(gatt.Device):
             self._auth_characteristic.write_value(self.AUTH_PAYLOAD)
 
     def start(self, runtime=1, zone=1):
-        """
+        '''
         Turn on the tap for ``runtime`` minutes.
 
-        On BX2, ``zone`` is outlet 1 or 2 and is written as byte0 of the
-        4-byte f006 command. BX1 is a single outlet; zone 1 matches the
+        f006 start is ``[0x01, tap, 0x00, minutes]``. Byte 0 is on/off
+        (always 0x01 for start). Byte 1 is the outlet: 0x00 Grass
+        (zone 1), 0x01 Hose (zone 2). Hose is hex ``010100NN``.
+
+        Do not write the zone number into byte 0. ``[0x02, 0x00, 0x00,
+        mins]`` ACKs and stays dry. ``[0x01, 0x02, 0x00, mins]`` is the
+        same: ACK, no jet. BX1 is a single outlet; zone 1 matches the
         original SDK ON payload ``01 00 00 <mins>``.
-        """
+        '''
         runtime = 255 if runtime > 255 else max(1, int(runtime))
         zone = max(1, min(int(zone), 2))
+        tap = 0x00 if zone == 1 else 0x01
         self._unlock()
         if self._manual_characteristic:
-            value = bytes([zone, 0x00, 0x00, runtime])
+            value = bytes([0x01, tap, 0x00, runtime])
             self._manual_characteristic.write_value(value)
 
     def stop(self):

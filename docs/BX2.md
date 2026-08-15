@@ -26,14 +26,26 @@ Field notes from bringing a Holman **BX2** (dual outlet, advertised name `BX2`) 
 
 4 bytes on `f006`:
 
-```
-[zone, 0x00, 0x00, minutes]
-```
+    [0x01, tap, 0x00, minutes]
 
-- `zone` is `1` or `2` (physical outlet). `01` is outlet 1, `02` is outlet 2. Confirmed by starting each outlet from the official app and from this SDK, then watching which valve opened.
+| Zone | Name | Start write | Hex |
+| --- | --- | --- | --- |
+| 1 | Grass | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
+| 2 | Hose | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
+| — | Stop | `[0x00, 0x00, 0x00, 0x00]` | `00000000` |
+
+- Byte 0 is on/off (`0x01` start, `0x00` stop). It is **not** the zone.
+- Byte 1 is the outlet: `0x00` Grass, `0x01` Hose.
 - `minutes` is `1…255`.
-- Stop is `00 00 00 00` (all-off, both outlets).
-- Zone `1` matches the original single-outlet SDK ON payload `01 00 00 <mins>`. BX1 stays compatible if callers leave `zone` at the default `1`.
+- Stop is all-off (both outlets).
+- Zone 1 matches the original single-outlet SDK ON payload `01 00 00 <mins>`. BX1 stays compatible if callers leave `zone` at the default `1`.
+
+Do **not** treat `0x02` as Hose. Two dry-but-ACK writes we hit while mapping the second tap:
+
+- `[0x02, 0x00, 0x00, mins]` (zone number stuffed into byte 0)
+- `[0x01, 0x02, 0x00, mins]` (hex `010200NN`)
+
+The first wet Hose write was `01010001`. `01020001` was a residual probe and stayed dry.
 
 A 10-byte ESPHome-style pad (`01 00 00 mins` + six zeros) is accepted if written **without** response. A 10-byte write **with** response returned ATT `0x0e` and dropped the link. Prefer the 4-byte form.
 
@@ -74,7 +86,7 @@ Keep a future upstream PR to the behaviour change, not this whole note:
 1. Accept `BX*` aliases (and optionally `HOLMAN_ACCEPTED_ALIAS_PREFIXES`).
 2. Discover by alias, not advertised service UUID.
 3. Unlock `c001` with `AE 8E` when the characteristic exists.
-4. `start(runtime, zone=1)` writes `[zone, 0, 0, mins]`; `stop()` writes zeros.
+4. `start(runtime, zone=1)` writes `[0x01, tap, 0, mins]` (tap `0x00` Grass / `0x01` Hose); `stop()` writes zeros.
 5. CLI `--start` / `--stop` / `--minutes` / `--zone`.
 6. README mention of BTX2 / BX2 and a link here.
 

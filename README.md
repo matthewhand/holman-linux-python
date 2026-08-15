@@ -100,7 +100,7 @@ manager.run()
 
 ### Configuring accepted device aliases
 
-By default the SDK accepts devices whose advertised alias starts with `Tap` or `BX`. You can override this with the `accepted_alias_prefixes` constructor argument or the `HOLMAN_ACCEPTED_ALIAS_PREFIXES` environment variable (comma-separated).
+By default the SDK accepts devices whose advertised alias starts with `Tap` (BX1 / Tap Timer) or `BX` (BX2 and current BX-prefixed units). Override `accepted_alias_prefixes` or set `HOLMAN_ACCEPTED_ALIAS_PREFIXES` (comma-separated) when a future unit such as BX3 advertises a different prefix.
 
 ```python
 manager = holman.TapTimerManager(
@@ -137,7 +137,7 @@ As with Holman tap timer discovery, remember to start the Bluetooth event loop w
 
 ### Start the tap running
 
-Once a Holman tap timer is connected you can start the tap with `TapTimer.start(runtime=1)`. Pass a runtime in minutes. On dual-outlet BX2/BTX2 units, pass `zone=1` or `zone=2`:
+Once a Holman tap timer is connected you can start the tap with `TapTimer.start(runtime=1)`. Pass a runtime in minutes. On dual-outlet BX2/BTX2 units, pass `zone=1` (Grass, `[0x01, 0x00, 0x00, mins]`) or `zone=2` (Hose, `[0x01, 0x01, 0x00, mins]`). Byte 1 is the outlet. Do not put `0x02` in byte 0 or byte 1 — those writes ACK and stay dry.
 
 ```python
 tap_timer.start(runtime=5, zone=1)
@@ -151,7 +151,7 @@ sudo holmanctl --start AA:BB:CC:DD:EE:FF --minutes 5 --zone 1
 sudo holmanctl --stop AA:BB:CC:DD:EE:FF
 ```
 
-See [docs/BX2.md](docs/BX2.md) for the BX2 GATT notes (zones, unlock, what not to read).
+See [docs/BX2.md](docs/BX2.md) for the BX2 GATT notes (zones, unlock, what not to read) and [docs/homeassistant-example.md](docs/homeassistant-example.md) for a generic Home Assistant / Lovelace sketch (zone 1 Grass, zone 2 Hose; no site addresses).
 
 ## Support
 
