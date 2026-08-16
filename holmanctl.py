@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import logging
 import sys
 from argparse import ArgumentParser
 import holman
@@ -101,8 +102,13 @@ def main():
         type=str,
         help="Connect and send all-off")
     arg_parser.add_argument('--minutes', type=int, default=2, help="Minutes for --start")
-    arg_parser.add_argument('--zone', type=int, default=1, help="1 Sprinkler (tap 0) or 2 Hose (tap 1). Default 1")
+    arg_parser.add_argument('--zone', type=int, default=1, help="Outlet 1 Sprinkler or 2 Hose (BX2). Default 1")
+    arg_parser.add_argument(
+        '--debug', action='store_true',
+        help='Log f006 write hex and BLE debug to stderr')
     args = arg_parser.parse_args()
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     global tap_timer_manager
     tap_timer_manager = holman.TapTimerManager(adapter_name=args.adapter)
@@ -132,8 +138,17 @@ def main():
         class StartListener(TapTimerTestListener):
             def connect_succeeded(self):
                 super().connect_succeeded()
-                print(f"starting zone={args.zone} minutes={args.minutes}")
-                self.tap_timer.start(runtime=args.minutes, zone=args.zone)
+                from holman.payload import manual_payload, tap_name
+                try:
+                    payload = manual_payload(True, args.minutes, args.zone)
+                    print(
+                        'starting zone={} ({}) minutes={} payload={}'.format(
+                            args.zone, tap_name(args.zone), args.minutes, payload.hex()))
+                    self.tap_timer.start(runtime=args.minutes, zone=args.zone)
+                except ValueError as err:
+                    print('start refused: {}'.format(err))
+                    tap_timer_manager.stop()
+                    sys.exit(2)
 
         tap_timer.listener = StartListener(tap_timer=tap_timer)
         tap_timer.connect()

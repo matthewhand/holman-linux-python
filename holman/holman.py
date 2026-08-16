@@ -1,43 +1,14 @@
 """
 Module for managing Holman Bluetooth tap timers.
 """
-import os
+import logging
 
 import gatt
 
+from .aliases import resolve_aliases, resolve_service_uuids
+from .payload import manual_payload, tap_name
 
-_DEFAULT_ALIASES = ('Tap Timer', 'BX2')
-
-
-def _get_default_aliases():
-    aliases = list(_DEFAULT_ALIASES)
-    env = os.environ.get('HOLMAN_ACCEPTED_ALIASES')
-    if env:
-        for name in env.split(','):
-            name = name.strip()
-            if name and name not in aliases:
-                aliases.append(name)
-    return tuple(aliases)
-
-
-def _get_default_service_uuids():
-    '''
-    CO3015 / CO3012 / CO3011 unless HOLMAN_SERVICE_UUIDS is set.
-
-    When the env var is set, the comma-separated value fully replaces
-    the hardcoded defaults (not extras). Unset or blank = defaults.
-    '''
-    env = os.environ.get('HOLMAN_SERVICE_UUIDS')
-    if env and env.strip():
-        uuids = []
-        for raw in env.split(','):
-            raw = raw.strip().lower()
-            if raw and raw not in uuids:
-                uuids.append(raw)
-        if uuids:
-            return tuple(uuids)
-    return tuple(TapTimer.SERVICE_UUIDS)
-
+_LOGGER = logging.getLogger(__name__)
 
 
 class TapTimerManager(gatt.DeviceManager):
@@ -65,12 +36,9 @@ class TapTimerManager(gatt.DeviceManager):
         """
         # DeviceManager.__init__ calls update_devices() -> make_device(),
         # which reads accepted_aliases and service_uuids.
-        if accepted_aliases is None:
-            accepted_aliases = _get_default_aliases()
-        self.accepted_aliases = tuple(accepted_aliases)
-        if service_uuids is None:
-            service_uuids = _get_default_service_uuids()
-        self.service_uuids = tuple(u.lower() for u in service_uuids)
+        # Constructor list wins over HOLMAN_ACCEPTED_ALIASES / HOLMAN_SERVICE_UUIDS.
+        self.accepted_aliases = resolve_aliases(accepted_aliases)
+        self.service_uuids = resolve_service_uuids(service_uuids)
         self.listener = None
         self.discovered_tap_timers = {}
         super().__init__(adapter_name)
@@ -173,9 +141,7 @@ class TapTimer(gatt.Device):
 
         if service_uuids is None:
             service_uuids = getattr(manager, 'service_uuids', None)
-        if service_uuids is None:
-            service_uuids = _get_default_service_uuids()
-        self.service_uuids = tuple(u.lower() for u in service_uuids)
+        self.service_uuids = resolve_service_uuids(service_uuids)
 
         self.listener = None
         self._battery_level = None
@@ -290,25 +256,29 @@ class TapTimer(gatt.Device):
         '''
         Turn on the tap for ``runtime`` minutes.
 
-        f006 start is ``[0x01, tap, 0x00, minutes]``. Byte 0 is on
-        (0x01). Byte 1 is the outlet: tap 0x00 is Sprinkler, tap 0x01 is
-        Hose (hex ``010100NN``). Sprinkler matches the original SDK ON
-        payload ``01 00 00 <mins>``.
+        Builds the same 4-byte f006 payload as ``manual_payload``:
+        Sprinkler ``[0x01, 0x00, 0x00, mins]``, Hose ``[0x01, 0x01, 0x00, mins]``.
+        Unknown zones raise ``ValueError`` (fail closed). Runtime is
+        clamped to 1..255. Missing f006 raises ``RuntimeError``.
         '''
-        runtime = 255 if runtime > 255 else max(1, int(runtime))
-        zone = max(1, min(int(zone), 2))
-        tap = 0x00 if zone == 1 else 0x01
+        value = manual_payload(True, runtime, zone)
+        _LOGGER.debug(
+            'f006 write {} zone={} name={}'.format(
+                value.hex(), zone, tap_name(zone)),
+        )
         self._unlock()
-        if self._manual_characteristic:
-            value = bytes([0x01, tap, 0x00, runtime])
-            self._manual_characteristic.write_value(value)
+        if not self._manual_characteristic:
+            raise RuntimeError('Holman GATT characteristic f006 missing')
+        self._manual_characteristic.write_value(value)
 
     def stop(self):
-        """Turn off the tap."""
+        '''Turn off the tap (all-zero f006).'''
+        value = manual_payload(False)
+        _LOGGER.debug('f006 write {} stop'.format(value.hex()))
         self._unlock()
-        if self._manual_characteristic:
-            value = bytes([0x00, 0x00, 0x00, 0x00])
-            self._manual_characteristic.write_value(value)
+        if not self._manual_characteristic:
+            raise RuntimeError('Holman GATT characteristic f006 missing')
+        self._manual_characteristic.write_value(value)
 
     def characteristic_write_value_succeeded(self, characteristic):
         self._refresh_state()
