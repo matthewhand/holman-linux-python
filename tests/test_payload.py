@@ -66,35 +66,30 @@ class TestManualPayload(unittest.TestCase):
 
 class TestAcceptedAliases(unittest.TestCase):
     def _clear_alias_env(self):
-        return (
-            os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None),
-            os.environ.pop('HOLMAN_ACCEPTED_ALIAS_PREFIXES', None),
-        )
+        return os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None)
 
-    def _restore_alias_env(self, aliases, prefixes):
+    def _restore_alias_env(self, aliases):
         if aliases is not None:
             os.environ['HOLMAN_ACCEPTED_ALIASES'] = aliases
-        if prefixes is not None:
-            os.environ['HOLMAN_ACCEPTED_ALIAS_PREFIXES'] = prefixes
 
     def test_default_exact_tap_timer_and_bx2(self):
-        old_aliases, old_prefixes = self._clear_alias_env()
+        old_aliases = self._clear_alias_env()
         try:
             self.assertEqual(get_default_aliases(), ('Tap Timer', 'BX2'))
         finally:
-            self._restore_alias_env(old_aliases, old_prefixes)
+            self._restore_alias_env(old_aliases)
 
     def test_env_adds_exact_alias(self):
-        old_aliases, old_prefixes = self._clear_alias_env()
+        old_aliases = self._clear_alias_env()
         os.environ['HOLMAN_ACCEPTED_ALIASES'] = 'BX3'
         try:
             self.assertEqual(get_default_aliases(), ('Tap Timer', 'BX2', 'BX3'))
         finally:
             os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None)
-            self._restore_alias_env(old_aliases, old_prefixes)
+            self._restore_alias_env(old_aliases)
 
     def test_unknown_names_fail_closed(self):
-        old_aliases, old_prefixes = self._clear_alias_env()
+        old_aliases = self._clear_alias_env()
         try:
             accepted = get_default_aliases()
             self.assertTrue(alias_accepted('Tap Timer', accepted))
@@ -105,7 +100,7 @@ class TestAcceptedAliases(unittest.TestCase):
             self.assertNotIn('BX', accepted)
             self.assertNotIn('', accepted)
         finally:
-            self._restore_alias_env(old_aliases, old_prefixes)
+            self._restore_alias_env(old_aliases)
 
 
 if __name__ == '__main__':
