@@ -23,7 +23,8 @@ manual_payload = payload.manual_payload
 tap_for_zone = payload.tap_for_zone
 tap_name = payload.tap_name
 clamp_runtime = payload.clamp_runtime
-get_default_alias_prefixes = aliases.get_default_alias_prefixes
+get_default_aliases = aliases.get_default_aliases
+alias_accepted = aliases.alias_accepted
 
 
 class TestManualPayload(unittest.TestCase):
@@ -63,25 +64,48 @@ class TestManualPayload(unittest.TestCase):
         self.assertEqual(tap_name(2), 'Hose')
 
 
-class TestAliasPrefixes(unittest.TestCase):
-    def test_default_accepts_tap_and_bx(self):
-        old = os.environ.pop('HOLMAN_ACCEPTED_ALIAS_PREFIXES', None)
-        try:
-            self.assertEqual(get_default_alias_prefixes(), ('Tap', 'BX'))
-        finally:
-            if old is not None:
-                os.environ['HOLMAN_ACCEPTED_ALIAS_PREFIXES'] = old
+class TestAcceptedAliases(unittest.TestCase):
+    def _clear_alias_env(self):
+        return (
+            os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None),
+            os.environ.pop('HOLMAN_ACCEPTED_ALIAS_PREFIXES', None),
+        )
 
-    def test_env_override_for_future_bx3(self):
-        old = os.environ.get('HOLMAN_ACCEPTED_ALIAS_PREFIXES')
-        os.environ['HOLMAN_ACCEPTED_ALIAS_PREFIXES'] = 'Tap,BX,BX3'
+    def _restore_alias_env(self, aliases, prefixes):
+        if aliases is not None:
+            os.environ['HOLMAN_ACCEPTED_ALIASES'] = aliases
+        if prefixes is not None:
+            os.environ['HOLMAN_ACCEPTED_ALIAS_PREFIXES'] = prefixes
+
+    def test_default_exact_tap_timer_and_bx2(self):
+        old_aliases, old_prefixes = self._clear_alias_env()
         try:
-            self.assertEqual(get_default_alias_prefixes(), ('Tap', 'BX', 'BX3'))
+            self.assertEqual(get_default_aliases(), ('Tap Timer', 'BX2'))
         finally:
-            if old is None:
-                os.environ.pop('HOLMAN_ACCEPTED_ALIAS_PREFIXES', None)
-            else:
-                os.environ['HOLMAN_ACCEPTED_ALIAS_PREFIXES'] = old
+            self._restore_alias_env(old_aliases, old_prefixes)
+
+    def test_env_adds_exact_alias(self):
+        old_aliases, old_prefixes = self._clear_alias_env()
+        os.environ['HOLMAN_ACCEPTED_ALIASES'] = 'BX3'
+        try:
+            self.assertEqual(get_default_aliases(), ('Tap Timer', 'BX2', 'BX3'))
+        finally:
+            os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None)
+            self._restore_alias_env(old_aliases, old_prefixes)
+
+    def test_unknown_names_fail_closed(self):
+        old_aliases, old_prefixes = self._clear_alias_env()
+        try:
+            accepted = get_default_aliases()
+            self.assertTrue(alias_accepted('Tap Timer', accepted))
+            self.assertTrue(alias_accepted('BX2', accepted))
+            for name in ('', 'Tap', 'BX', 'Holman BX2', 'BTX2', 'BX21', 'Tap Timer '):
+                self.assertFalse(alias_accepted(name, accepted))
+            self.assertNotIn('Tap', accepted)
+            self.assertNotIn('BX', accepted)
+            self.assertNotIn('', accepted)
+        finally:
+            self._restore_alias_env(old_aliases, old_prefixes)
 
 
 if __name__ == '__main__':

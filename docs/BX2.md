@@ -6,10 +6,9 @@ Protocol notes for a Holman **BX2** (dual outlet, advertised name `BX2`) with th
 
 ## Identity
 
-- Advertised alias starts with `BX`, not `Tap Timer`. Discovery must accept that prefix.
-- A BX2 may advertise vendor service `c521f000-0d70-4d4f-8e43-40d84c50ab38` (this repo already labelled that UUID as BTX1 / CO3011). Another BTX2 UUID (`aacaebbb-...`) is listed here but is not required for discovery.
+- Advertised alias is exactly `BX2` (bluetoothctl Name/Alias and Bleak `local_name`). Not `Holman BX2` or `BTX2`. Discovery matches exact names `Tap Timer` (BX1) and `BX2`.
+- This BX2 advertises vendor service `c521f000-0d70-4d4f-8e43-40d84c50ab38` (already labelled BTX1 / CO3011). Discovery can pass `service_uuids=TapTimer.SERVICE_UUIDS` again because that list includes the on-air UUID. Another BTX2 UUID (`aacaebbb-...`) stays in the list for other units.
 - Manufacturer company id `0x0374`. BLE address type is **random**.
-- Scan advertisements often carry the name and company id only. Do **not** require the vendor service UUID in the advert packet; resolve GATT after connect. That is why `TapTimerManager.start_discovery()` no longer passes `service_uuids=`.
 
 ## GATT (safe)
 
@@ -74,8 +73,8 @@ The printed manual's "one smartphone" line is about **scheduling ownership**, no
 
 ## Suggested PR surface
 
-1. Accept `BX*` aliases (and optionally `HOLMAN_ACCEPTED_ALIAS_PREFIXES`).
-2. Discover by alias, not advertised service UUID.
+1. Accept exact aliases `Tap Timer` and `BX2` (optional `HOLMAN_ACCEPTED_ALIASES` adds more exact names).
+2. Discover with `service_uuids=TapTimer.SERVICE_UUIDS` (includes the on-air BX2 UUID).
 3. Unlock `c001` with `AE 8E` when the characteristic exists.
 4. `start(runtime, zone=1)` writes `[0x01, tap, 0, mins]` (tap `0x00` Sprinkler / `0x01` Hose); `stop()` writes zeros.
 5. CLI `--start` / `--stop` / `--minutes` / `--zone`.

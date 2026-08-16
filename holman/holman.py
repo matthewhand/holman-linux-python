@@ -5,7 +5,7 @@ import logging
 
 import gatt
 
-from .aliases import get_default_alias_prefixes
+from .aliases import get_default_aliases
 from .payload import manual_payload, tap_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -16,23 +16,22 @@ class TapTimerManager(gatt.DeviceManager):
     Entry point for managing and discovering Holman ``TapTimer``s.
     """
 
-    def __init__(self, adapter_name='hci0', accepted_alias_prefixes=None):
+    def __init__(self, adapter_name='hci0', accepted_aliases=None):
         """
         Instantiates a ``TapTimerManager``
 
         :param adapter_name: name of Bluetooth adapter used by this
                              tap timer manager
-        :param accepted_alias_prefixes: tuple of alias prefixes to accept
-                                        during discovery. Defaults to
-                                        ``('Tap', 'BX')`` or the
-                                        ``HOLMAN_ACCEPTED_ALIAS_PREFIXES``
-                                        environment variable (comma-separated).
+        :param accepted_aliases: exact advertised names to accept during
+                                 discovery. Defaults to ``('Tap Timer', 'BX2')``
+                                 plus extra names from ``HOLMAN_ACCEPTED_ALIASES``
+                                 (comma-separated exact strings).
         """
         # DeviceManager.__init__ calls update_devices() -> make_device(),
-        # which reads accepted_alias_prefixes.
-        if accepted_alias_prefixes is None:
-            accepted_alias_prefixes = get_default_alias_prefixes()
-        self.accepted_alias_prefixes = tuple(accepted_alias_prefixes)
+        # which reads accepted_aliases.
+        if accepted_aliases is None:
+            accepted_aliases = get_default_aliases()
+        self.accepted_aliases = tuple(accepted_aliases)
         self.listener = None
         self.discovered_tap_timers = {}
         super().__init__(adapter_name)
@@ -50,13 +49,13 @@ class TapTimerManager(gatt.DeviceManager):
         Assign a `TapTimerManagerListener` to the `listener` attribute
         to collect discovered Holmans.
         """
-        super().start_discovery()
+        super().start_discovery(service_uuids=TapTimer.SERVICE_UUIDS)
 
     def make_device(self, mac_address):
         device = gatt.Device(
             mac_address=mac_address, manager=self, managed=False)
         alias = device.alias() or ''
-        if not any(alias.startswith(p) for p in self.accepted_alias_prefixes):
+        if alias not in self.accepted_aliases:
             return None
         return TapTimer(mac_address=mac_address, manager=self)
 
