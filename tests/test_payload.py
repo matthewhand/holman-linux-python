@@ -25,6 +25,12 @@ tap_name = payload.tap_name
 clamp_runtime = payload.clamp_runtime
 get_default_aliases = aliases.get_default_aliases
 alias_accepted = aliases.alias_accepted
+get_default_service_uuids = aliases.get_default_service_uuids
+DEFAULT_SERVICE_UUIDS = aliases.DEFAULT_SERVICE_UUIDS
+HOLMAN_CO3015_SERVICE_UUID = aliases.HOLMAN_CO3015_SERVICE_UUID
+HOLMAN_CO3012_SERVICE_UUID = aliases.HOLMAN_CO3012_SERVICE_UUID
+HOLMAN_CO3011_SERVICE_UUID = aliases.HOLMAN_CO3011_SERVICE_UUID
+UNKNOWN_SERVICE_UUID = '00000000-0000-0000-0000-000000000000'
 
 
 class TestManualPayload(unittest.TestCase):
@@ -101,6 +107,51 @@ class TestAcceptedAliases(unittest.TestCase):
             self.assertNotIn('', accepted)
         finally:
             self._restore_alias_env(old_aliases)
+
+
+class TestServiceUuids(unittest.TestCase):
+    def _clear_uuid_env(self):
+        return os.environ.pop('HOLMAN_SERVICE_UUIDS', None)
+
+    def _restore_uuid_env(self, value):
+        if value is not None:
+            os.environ['HOLMAN_SERVICE_UUIDS'] = value
+
+    def test_default_includes_co3011(self):
+        old = self._clear_uuid_env()
+        try:
+            uuids = get_default_service_uuids()
+            self.assertEqual(uuids, DEFAULT_SERVICE_UUIDS)
+            self.assertIn(HOLMAN_CO3011_SERVICE_UUID, uuids)
+            self.assertIn(HOLMAN_CO3015_SERVICE_UUID, uuids)
+            self.assertIn(HOLMAN_CO3012_SERVICE_UUID, uuids)
+        finally:
+            self._restore_uuid_env(old)
+
+    def test_env_replaces_list(self):
+        old = self._clear_uuid_env()
+        os.environ['HOLMAN_SERVICE_UUIDS'] = (
+            UNKNOWN_SERVICE_UUID + ', ' + HOLMAN_CO3011_SERVICE_UUID)
+        try:
+            uuids = get_default_service_uuids()
+            self.assertEqual(
+                uuids, (UNKNOWN_SERVICE_UUID, HOLMAN_CO3011_SERVICE_UUID))
+            self.assertNotIn(HOLMAN_CO3015_SERVICE_UUID, uuids)
+            self.assertNotIn(HOLMAN_CO3012_SERVICE_UUID, uuids)
+        finally:
+            os.environ.pop('HOLMAN_SERVICE_UUIDS', None)
+            self._restore_uuid_env(old)
+
+    def test_unknown_uuid_not_in_default_unless_env_set(self):
+        old = self._clear_uuid_env()
+        try:
+            self.assertNotIn(UNKNOWN_SERVICE_UUID, get_default_service_uuids())
+            os.environ['HOLMAN_SERVICE_UUIDS'] = UNKNOWN_SERVICE_UUID
+            self.assertEqual(get_default_service_uuids(), (UNKNOWN_SERVICE_UUID,))
+            self.assertNotIn(HOLMAN_CO3011_SERVICE_UUID, get_default_service_uuids())
+        finally:
+            os.environ.pop('HOLMAN_SERVICE_UUIDS', None)
+            self._restore_uuid_env(old)
 
 
 if __name__ == '__main__':

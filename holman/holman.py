@@ -5,30 +5,10 @@ import logging
 
 import gatt
 
-from .aliases import get_default_aliases
+from .aliases import get_default_aliases, get_default_service_uuids
 from .payload import manual_payload, tap_name
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _get_default_service_uuids():
-    '''
-    CO3015 / CO3012 / CO3011 unless HOLMAN_SERVICE_UUIDS is set.
-
-    When the env var is set, the comma-separated value fully replaces
-    the hardcoded defaults (not extras). Unset or blank = defaults.
-    '''
-    env = os.environ.get('HOLMAN_SERVICE_UUIDS')
-    if env and env.strip():
-        uuids = []
-        for raw in env.split(','):
-            raw = raw.strip().lower()
-            if raw and raw not in uuids:
-                uuids.append(raw)
-        if uuids:
-            return tuple(uuids)
-    return tuple(TapTimer.SERVICE_UUIDS)
-
 
 
 class TapTimerManager(gatt.DeviceManager):
@@ -60,7 +40,7 @@ class TapTimerManager(gatt.DeviceManager):
             accepted_aliases = get_default_aliases()
         self.accepted_aliases = tuple(accepted_aliases)
         if service_uuids is None:
-            service_uuids = _get_default_service_uuids()
+            service_uuids = get_default_service_uuids()
         self.service_uuids = tuple(u.lower() for u in service_uuids)
         self.listener = None
         self.discovered_tap_timers = {}
@@ -165,7 +145,7 @@ class TapTimer(gatt.Device):
         if service_uuids is None:
             service_uuids = getattr(manager, 'service_uuids', None)
         if service_uuids is None:
-            service_uuids = _get_default_service_uuids()
+            service_uuids = get_default_service_uuids()
         self.service_uuids = tuple(u.lower() for u in service_uuids)
 
         self.listener = None
