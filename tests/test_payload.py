@@ -26,6 +26,8 @@ clamp_runtime = payload.clamp_runtime
 get_default_aliases = aliases.get_default_aliases
 alias_accepted = aliases.alias_accepted
 get_default_service_uuids = aliases.get_default_service_uuids
+resolve_aliases = aliases.resolve_aliases
+resolve_service_uuids = aliases.resolve_service_uuids
 DEFAULT_SERVICE_UUIDS = aliases.DEFAULT_SERVICE_UUIDS
 HOLMAN_CO3015_SERVICE_UUID = aliases.HOLMAN_CO3015_SERVICE_UUID
 HOLMAN_CO3012_SERVICE_UUID = aliases.HOLMAN_CO3012_SERVICE_UUID
@@ -152,6 +154,88 @@ class TestServiceUuids(unittest.TestCase):
         finally:
             os.environ.pop('HOLMAN_SERVICE_UUIDS', None)
             self._restore_uuid_env(old)
+
+
+class TestResolveAliasesAndUuids(unittest.TestCase):
+    def _clear_envs(self):
+        return (
+            os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None),
+            os.environ.pop('HOLMAN_SERVICE_UUIDS', None),
+        )
+
+    def _restore_envs(self, aliases, uuids):
+        if aliases is not None:
+            os.environ['HOLMAN_ACCEPTED_ALIASES'] = aliases
+        if uuids is not None:
+            os.environ['HOLMAN_SERVICE_UUIDS'] = uuids
+
+    def test_unset_env_resolve_defaults(self):
+        old_aliases, old_uuids = self._clear_envs()
+        try:
+            self.assertEqual(resolve_aliases(), ('Tap Timer', 'BX2'))
+            self.assertEqual(resolve_aliases(None), ('Tap Timer', 'BX2'))
+            uuids = resolve_service_uuids()
+            self.assertEqual(uuids, DEFAULT_SERVICE_UUIDS)
+            self.assertIn(HOLMAN_CO3011_SERVICE_UUID, uuids)
+        finally:
+            self._restore_envs(old_aliases, old_uuids)
+
+    def test_env_appends_exact_alias_via_resolve(self):
+        old_aliases, old_uuids = self._clear_envs()
+        os.environ['HOLMAN_ACCEPTED_ALIASES'] = 'BX3'
+        try:
+            self.assertEqual(resolve_aliases(), ('Tap Timer', 'BX2', 'BX3'))
+        finally:
+            os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None)
+            self._restore_envs(old_aliases, old_uuids)
+
+    def test_env_full_replaces_service_uuids_via_resolve(self):
+        old_aliases, old_uuids = self._clear_envs()
+        os.environ['HOLMAN_SERVICE_UUIDS'] = UNKNOWN_SERVICE_UUID
+        try:
+            uuids = resolve_service_uuids()
+            self.assertEqual(uuids, (UNKNOWN_SERVICE_UUID,))
+            self.assertNotIn(HOLMAN_CO3015_SERVICE_UUID, uuids)
+            self.assertNotIn(HOLMAN_CO3012_SERVICE_UUID, uuids)
+            self.assertNotIn(HOLMAN_CO3011_SERVICE_UUID, uuids)
+        finally:
+            os.environ.pop('HOLMAN_SERVICE_UUIDS', None)
+            self._restore_envs(old_aliases, old_uuids)
+
+    def test_resolve_aliases_constructor_wins_over_env(self):
+        old_aliases, old_uuids = self._clear_envs()
+        os.environ['HOLMAN_ACCEPTED_ALIASES'] = 'Nope'
+        try:
+            self.assertEqual(resolve_aliases(('BX2',)), ('BX2',))
+            self.assertNotIn('Nope', resolve_aliases(('BX2',)))
+        finally:
+            os.environ.pop('HOLMAN_ACCEPTED_ALIASES', None)
+            self._restore_envs(old_aliases, old_uuids)
+
+    def test_resolve_service_uuids_constructor_wins_over_env(self):
+        old_aliases, old_uuids = self._clear_envs()
+        os.environ['HOLMAN_SERVICE_UUIDS'] = UNKNOWN_SERVICE_UUID
+        try:
+            self.assertEqual(
+                resolve_service_uuids((HOLMAN_CO3011_SERVICE_UUID,)),
+                (HOLMAN_CO3011_SERVICE_UUID,))
+            self.assertNotIn(
+                UNKNOWN_SERVICE_UUID,
+                resolve_service_uuids((HOLMAN_CO3011_SERVICE_UUID,)))
+        finally:
+            os.environ.pop('HOLMAN_SERVICE_UUIDS', None)
+            self._restore_envs(old_aliases, old_uuids)
+
+    def test_device_data_bx2_and_co3011(self):
+        old_aliases, old_uuids = self._clear_envs()
+        try:
+            self.assertTrue(alias_accepted('BX2'))
+            self.assertEqual(
+                HOLMAN_CO3011_SERVICE_UUID,
+                'c521f000-0d70-4d4f-8e43-40d84c50ab38')
+            self.assertIn(HOLMAN_CO3011_SERVICE_UUID, resolve_service_uuids())
+        finally:
+            self._restore_envs(old_aliases, old_uuids)
 
 
 if __name__ == '__main__':

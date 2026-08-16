@@ -5,7 +5,7 @@ import logging
 
 import gatt
 
-from .aliases import get_default_aliases, get_default_service_uuids
+from .aliases import resolve_aliases, resolve_service_uuids
 from .payload import manual_payload, tap_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,12 +36,9 @@ class TapTimerManager(gatt.DeviceManager):
         """
         # DeviceManager.__init__ calls update_devices() -> make_device(),
         # which reads accepted_aliases and service_uuids.
-        if accepted_aliases is None:
-            accepted_aliases = get_default_aliases()
-        self.accepted_aliases = tuple(accepted_aliases)
-        if service_uuids is None:
-            service_uuids = get_default_service_uuids()
-        self.service_uuids = tuple(u.lower() for u in service_uuids)
+        # Constructor list wins over HOLMAN_ACCEPTED_ALIASES / HOLMAN_SERVICE_UUIDS.
+        self.accepted_aliases = resolve_aliases(accepted_aliases)
+        self.service_uuids = resolve_service_uuids(service_uuids)
         self.listener = None
         self.discovered_tap_timers = {}
         super().__init__(adapter_name)
@@ -144,9 +141,7 @@ class TapTimer(gatt.Device):
 
         if service_uuids is None:
             service_uuids = getattr(manager, 'service_uuids', None)
-        if service_uuids is None:
-            service_uuids = get_default_service_uuids()
-        self.service_uuids = tuple(u.lower() for u in service_uuids)
+        self.service_uuids = resolve_service_uuids(service_uuids)
 
         self.listener = None
         self._battery_level = None

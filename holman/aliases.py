@@ -58,3 +58,21 @@ def get_default_service_uuids():
         if uuids:
             return tuple(uuids)
     return DEFAULT_SERVICE_UUIDS
+
+
+def resolve_aliases(accepted_aliases=None):
+    '''
+    Constructor list wins; otherwise ``get_default_aliases()`` (env extras).
+    '''
+    if accepted_aliases is not None:
+        return tuple(accepted_aliases)
+    return get_default_aliases()
+
+
+def resolve_service_uuids(service_uuids=None):
+    '''
+    Constructor list wins (lowercased); otherwise ``get_default_service_uuids()``.
+    '''
+    if service_uuids is not None:
+        return tuple(u.lower() for u in service_uuids)
+    return get_default_service_uuids()
