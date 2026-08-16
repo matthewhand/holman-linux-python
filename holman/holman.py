@@ -20,12 +20,33 @@ def _get_default_aliases():
     return tuple(aliases)
 
 
+def _get_default_service_uuids():
+    '''
+    CO3015 / CO3012 / CO3011 unless HOLMAN_SERVICE_UUIDS is set.
+
+    When the env var is set, the comma-separated value fully replaces
+    the hardcoded defaults (not extras). Unset or blank = defaults.
+    '''
+    env = os.environ.get('HOLMAN_SERVICE_UUIDS')
+    if env and env.strip():
+        uuids = []
+        for raw in env.split(','):
+            raw = raw.strip().lower()
+            if raw and raw not in uuids:
+                uuids.append(raw)
+        if uuids:
+            return tuple(uuids)
+    return tuple(TapTimer.SERVICE_UUIDS)
+
+
+
 class TapTimerManager(gatt.DeviceManager):
     """
     Entry point for managing and discovering Holman ``TapTimer``s.
     """
 
-    def __init__(self, adapter_name='hci0', accepted_aliases=None):
+    def __init__(self, adapter_name='hci0', accepted_aliases=None,
+                 service_uuids=None):
         """
         Instantiates a ``TapTimerManager``
 
@@ -35,12 +56,21 @@ class TapTimerManager(gatt.DeviceManager):
                                  discovery. Defaults to ``('Tap Timer', 'BX2')``
                                  plus extra names from ``HOLMAN_ACCEPTED_ALIASES``
                                  (comma-separated exact strings).
+        :param service_uuids: vendor service UUIDs for discovery and
+                              connect-time service pick. Defaults to
+                              CO3015 / CO3012 / CO3011. When
+                              ``HOLMAN_SERVICE_UUIDS`` is set, that
+                              comma-separated list fully replaces the
+                              defaults. Constructor wins over env.
         """
         # DeviceManager.__init__ calls update_devices() -> make_device(),
-        # which reads accepted_aliases.
+        # which reads accepted_aliases and service_uuids.
         if accepted_aliases is None:
             accepted_aliases = _get_default_aliases()
         self.accepted_aliases = tuple(accepted_aliases)
+        if service_uuids is None:
+            service_uuids = _get_default_service_uuids()
+        self.service_uuids = tuple(u.lower() for u in service_uuids)
         self.listener = None
         self.discovered_tap_timers = {}
         super().__init__(adapter_name)
@@ -58,7 +88,7 @@ class TapTimerManager(gatt.DeviceManager):
         Assign a `TapTimerManagerListener` to the `listener` attribute
         to collect discovered Holmans.
         """
-        super().start_discovery(service_uuids=TapTimer.SERVICE_UUIDS)
+        super().start_discovery(service_uuids=list(self.service_uuids))
 
     def make_device(self, mac_address):
         device = gatt.Device(
@@ -125,7 +155,7 @@ class TapTimer(gatt.Device):
         HOLMAN_CO3012_SERVICE_UUID,
         HOLMAN_CO3011_SERVICE_UUID]
 
-    def __init__(self, mac_address, manager):
+    def __init__(self, mac_address, manager, service_uuids=None):
         """
         Create an instance with given Bluetooth adapter name and MAC
         address.
@@ -134,8 +164,18 @@ class TapTimer(gatt.Device):
         format: ``AA:BB:CC:DD:EE:FF``
         :param manager: reference to the `TapTimerManager` that manages
         this tap timer
+        :param service_uuids: vendor service UUIDs for connect-time
+                              service pick. Defaults to the manager
+                              list, else the same resolved defaults /
+                              ``HOLMAN_SERVICE_UUIDS`` replace list.
         """
         super().__init__(mac_address=mac_address, manager=manager)
+
+        if service_uuids is None:
+            service_uuids = getattr(manager, 'service_uuids', None)
+        if service_uuids is None:
+            service_uuids = _get_default_service_uuids()
+        self.service_uuids = tuple(u.lower() for u in service_uuids)
 
         self.listener = None
         self._battery_level = None
@@ -180,9 +220,10 @@ class TapTimer(gatt.Device):
     def services_resolved(self):
         super().services_resolved()
 
+        accepted = {uuid.lower() for uuid in self.service_uuids}
         holman_service = next((
             service for service in self.services
-            if service.uuid in self.SERVICE_UUIDS), None)
+            if service.uuid.lower() in accepted), None)
         if holman_service is None:
             if self.listener:
                 # TODO: Use proper exception subclass

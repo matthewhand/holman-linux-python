@@ -113,6 +113,23 @@ export HOLMAN_ACCEPTED_ALIASES="BX3"
 sudo holmanctl --discover
 ```
 
+### Configuring accepted BLE service UUIDs
+
+By default discovery **and** connect-time service pick use the same three known Holman vendor services: CO3015 (`0a75f000-f9ad-467a-e564-3c19163ad543`), CO3012 (`aacaebbb-af4b-baf3-7361-989ffeb0b129`, some BTX2), and CO3011 (`c521f000-0d70-4d4f-8e43-40d84c50ab38`, BTX1 / the on-air BX2 UUID). Named constants stay on `TapTimer`.
+
+Set `HOLMAN_SERVICE_UUIDS` to a comma-separated list to **replace** that filter (not add to it). Unset = hardcoded defaults; set = exactly those UUIDs. Or pass `service_uuids` to `TapTimerManager` (constructor wins over env).
+
+```python
+manager = holman.TapTimerManager(
+    adapter_name='hci0',
+    service_uuids=('c521f000-0d70-4d4f-8e43-40d84c50ab38',))
+```
+
+```bash
+export HOLMAN_SERVICE_UUIDS="c521f000-0d70-4d4f-8e43-40d84c50ab38"
+sudo holmanctl --discover
+```
+
 ### Connecting to a Holman tap timer and receiving user input events
 
 Once `TapTimerManager` has discovered a Holman tap timer you can use the `TapTimer` object(s) that you retrieved from `TapTimerManager.tap_timers()` to connect to it. Alternatively you can create a new instance of `TapTimer` using the name of your Bluetooth adapter (typically `hci0`) and Holman's MAC address.
