@@ -100,16 +100,16 @@ manager.run()
 
 ### Configuring accepted device aliases
 
-By default the SDK accepts devices whose advertised alias starts with `Tap` (BX1 / Tap Timer) or `BX` (BX2 and current BX-prefixed units). Override `accepted_alias_prefixes` or set `HOLMAN_ACCEPTED_ALIAS_PREFIXES` (comma-separated) when a future unit such as BX3 advertises a different prefix.
+By default the SDK accepts devices whose advertised alias is exactly `Tap Timer` (upstream BX1) or `BX2` (this device). Match is membership (`if alias not in self.accepted_aliases: return None`); an empty alias does not match. Pass `accepted_aliases` or set `HOLMAN_ACCEPTED_ALIASES` (comma-separated) to add another exact name, not a prefix.
 
 ```python
 manager = holman.TapTimerManager(
     adapter_name='hci0',
-    accepted_alias_prefixes=('Tap', 'BX', 'Holman'))
+    accepted_aliases=('Tap Timer', 'BX2', 'BX3'))
 ```
 
 ```bash
-export HOLMAN_ACCEPTED_ALIAS_PREFIXES="Tap,BX,Holman"
+export HOLMAN_ACCEPTED_ALIASES="BX3"
 sudo holmanctl --discover
 ```
 
