@@ -25,19 +25,19 @@ Protocol notes for a Holman **BX2** (dual outlet, advertised name `BX2`) with th
 
 4 bytes on `f006`:
 
-    [0x01, tap, 0x00, minutes]
+    [0x01, tap_index, 0x00, minutes]
 
-| Tap | Name | Start write | Hex |
+| Tap index | Zone | Start write | Hex |
 | --- | --- | --- | --- |
-| 0 | Sprinkler | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
-| 1 | Hose | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
+| 0 | Zone 1 | `[0x01, 0x00, 0x00, minutes]` | `010000NN` |
+| 1 | Zone 2 | `[0x01, 0x01, 0x00, minutes]` | `010100NN` |
 | — | Stop | `[0x00, 0x00, 0x00, 0x00]` | `00000000` |
 
 - Byte 0 is on/off (`0x01` start, `0x00` stop).
-- Byte 1 is the outlet: tap `0x00` = Sprinkler, tap `0x01` = Hose.
+- Byte 1 is the tap index: `0x00` = zone 1, `0x01` = zone 2.
 - `minutes` is `1...255`.
 - Stop is all-off (both outlets).
-- Sprinkler matches the original single-outlet SDK ON payload `01 00 00 <mins>`. BX1 stays compatible if callers leave the default tap 0.
+- Zone 1 matches the original single-outlet SDK ON payload `01 00 00 <mins>`. BX1 stays compatible if callers leave the default tap 0.
 
 A 10-byte ESPHome-style pad (`01 00 00 mins` + six zeros) is accepted if written **without** response. A 10-byte write **with** response returned ATT `0x0e` and dropped the link. Prefer the 4-byte form.
 
@@ -45,7 +45,7 @@ If a 4-byte write **with** response fails (ATT `0x0e`), retry **without** respon
 
 ## Dual outlet behaviour
 
-- The timer can run **one outlet at a time**. Starting Hose while Sprinkler is open is not a second concurrent valve.
+- The timer can run **one outlet at a time**. Starting zone 2 while zone 1 is open is not a second concurrent valve.
 - To switch outlets: write stop (`00 00 00 00`), then start the other tap. A start-while-running write with response often errors; stop first.
 - There is no extra reset characteristic required after a manual run. Stop is the all-zero `f006` write.
 
@@ -76,7 +76,7 @@ The printed manual's "one smartphone" line is about **scheduling ownership**, no
 1. Accept exact aliases `Tap Timer` and `BX2` (optional `HOLMAN_ACCEPTED_ALIASES` adds more exact names).
 2. Discover and connect with the same service UUID list (defaults include the on-air BX2 UUID CO3011 / `c521f000-...`). `HOLMAN_SERVICE_UUIDS` or `service_uuids=` fully replaces the list when set.
 3. Unlock `c001` with `AE 8E` when the characteristic exists.
-4. `start(runtime, zone=1)` writes `[0x01, tap, 0, mins]` (tap `0x00` Sprinkler / `0x01` Hose); `stop()` writes zeros.
+4. `start(runtime, zone=1)` writes `[0x01, tap_index, 0, mins]` (tap index `0x00` zone 1 / `0x01` zone 2); `stop()` writes zeros.
 5. CLI `--start` / `--stop` / `--minutes` / `--zone`.
 6. README mention of BTX2 / BX2 and a link here.
 
