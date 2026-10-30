@@ -232,7 +232,12 @@ class TapTimer(gatt.Device):
 
     def services_resolved(self):
         super().services_resolved()
+        # Resolution can be called again after reconnect. Never retain a
+        # writable characteristic (or queued command) from the old session.
         self._pending_manual_payload = None
+        self._manual_characteristic = None
+        self._state_characteristic = None
+        self._auth_characteristic = None
 
         accepted = {uuid.lower() for uuid in self.service_uuids}
         holman_service = next((
@@ -245,10 +250,10 @@ class TapTimer(gatt.Device):
                     Exception("Holman GATT service missing"))
             return
 
-        self._manual_characteristic = next((
+        manual_characteristic = next((
             char for char in holman_service.characteristics
             if char.uuid == self.MANUAL_CHARACTERISTIC_UUID), None)
-        if self._manual_characteristic is None:
+        if manual_characteristic is None:
             # TODO: Use proper exception subclass
             self.listener.connect_failed(
                 Exception(
@@ -256,10 +261,10 @@ class TapTimer(gatt.Device):
                     self.MANUAL_CHARACTERISTIC_UUID))
             return
 
-        self._state_characteristic = next((
+        state_characteristic = next((
             char for char in holman_service.characteristics
             if char.uuid == self.STATE_CHARACTERISTIC_UUID), None)
-        if self._state_characteristic is None:
+        if state_characteristic is None:
             # TODO: Use proper exception subclass
             self.listener.connect_failed(
                 Exception(
@@ -269,6 +274,9 @@ class TapTimer(gatt.Device):
         self._auth_characteristic = next((
             char for char in holman_service.characteristics
             if char.uuid == self.AUTH_CHARACTERISTIC_UUID), None)
+        # Publish the required characteristics only after both were found.
+        self._manual_characteristic = manual_characteristic
+        self._state_characteristic = state_characteristic
         self._refresh_state()
 
         # TODO: Only fire connected event when we read the firmware

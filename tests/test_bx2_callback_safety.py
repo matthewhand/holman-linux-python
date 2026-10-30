@@ -4,9 +4,11 @@ No actual gatt, Bluetooth adapter, Home Assistant, network or third-party test
 package is imported. The fake write_value records a request; only explicit
 callback simulation completes it, just as the DBus-backed API does.
 """
+import importlib.util
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 class FakeManager:
@@ -68,10 +70,42 @@ class FakeService:
 fake_gatt = types.ModuleType("gatt")
 fake_gatt.Device = FakeDevice
 fake_gatt.DeviceManager = FakeManager
-sys.modules["gatt"] = fake_gatt
 
-import holman
-import holmanctl
+
+def load_offline_modules():
+    """Load a private copy of this SDK, restoring sys.modules afterwards.
+
+    The SDK imports gatt at module load, so the fake is injected only during
+    that isolated import. Existing real holman/gatt imports remain untouched.
+    """
+    root = Path(__file__).resolve().parents[1]
+    package_name = "_bx2_offline_holman"
+    spec = importlib.util.spec_from_file_location(
+        package_name,
+        root / "holman" / "__init__.py",
+        submodule_search_locations=[str(root / "holman")],
+    )
+    assert spec is not None and spec.loader is not None
+    with patch.dict(sys.modules, {"gatt": fake_gatt}):
+        package = importlib.util.module_from_spec(spec)
+        sys.modules[package_name] = package
+        try:
+            spec.loader.exec_module(package)
+        finally:
+            sys.modules.pop(package_name + ".holman", None)
+            sys.modules.pop(package_name, None)
+
+    cli_spec = importlib.util.spec_from_file_location(
+        "_bx2_offline_holmanctl", root / "holmanctl.py"
+    )
+    assert cli_spec is not None and cli_spec.loader is not None
+    cli = importlib.util.module_from_spec(cli_spec)
+    with patch.dict(sys.modules, {"holman": package}):
+        cli_spec.loader.exec_module(cli)
+    return package, cli
+
+
+holman, holmanctl = load_offline_modules()
 
 class Events(holman.TapTimerListener):
     def __init__(self):
@@ -221,6 +255,66 @@ class CallbackSafetyTests(unittest.TestCase):
         self.tap.characteristic_write_value_succeeded(self.manual)
         self.assertEqual(self.listener.events, ["written"])
 
+    def test_16_missing_service_after_reconnect_drops_old_characteristics(self):
+        self.resolve()
+        self.tap.services = [FakeService("00001800-0000-1000-8000-00805f9b34fb", [])]
+        self.tap.services_resolved()
+        self.assertIsNone(self.tap._manual_characteristic)
+        self.assertIsNone(self.tap._state_characteristic)
+        self.assertIsNone(self.tap._auth_characteristic)
+        self.tap.start(runtime=1, zone=1)
+        self.tap.stop()
+        self.assertEqual(self.manual.written, [])
+        self.assertEqual(self.auth.written, [])
+
+    def test_17_missing_state_after_reconnect_drops_old_manual_and_auth(self):
+        self.resolve()
+        second_manual = FakeCharacteristic(self.tap.MANUAL_CHARACTERISTIC_UUID)
+        self.tap.services = [FakeService(self.tap.HOLMAN_CO3011_SERVICE_UUID,
+                                         [second_manual])]
+        self.tap.services_resolved()
+        self.assertIsNone(self.tap._manual_characteristic)
+        self.assertIsNone(self.tap._state_characteristic)
+        self.assertIsNone(self.tap._auth_characteristic)
+        self.tap.start(runtime=1, zone=1)
+        self.assertEqual(second_manual.written, [])
+        self.assertEqual(self.manual.written, [])
+
+    def test_18_missing_manual_after_reconnect_disables_old_writes(self):
+        self.resolve()
+        self.tap.services = [
+            FakeService(self.tap.HOLMAN_CO3011_SERVICE_UUID, [self.state])
+        ]
+        self.tap.services_resolved()
+        self.assertIsNone(self.tap._manual_characteristic)
+        self.assertIsNone(self.tap._state_characteristic)
+        self.assertIsNone(self.tap._auth_characteristic)
+        self.tap.start(runtime=1, zone=1)
+        self.tap.stop()
+        self.assertEqual(self.manual.written, [])
+        self.assertEqual(self.auth.written, [])
+
+    def test_19_reconnect_after_failure_uses_only_new_characteristics(self):
+        self.resolve()
+        self.tap.services = [
+            FakeService("00001800-0000-1000-8000-00805f9b34fb", [])
+        ]
+        self.tap.services_resolved()
+        next_manual = FakeCharacteristic(self.tap.MANUAL_CHARACTERISTIC_UUID)
+        next_state = FakeCharacteristic(self.tap.STATE_CHARACTERISTIC_UUID)
+        next_auth = FakeCharacteristic(self.tap.AUTH_CHARACTERISTIC_UUID)
+        self.tap.services = [
+            FakeService(self.tap.HOLMAN_CO3011_SERVICE_UUID,
+                        [next_manual, next_state, next_auth])
+        ]
+        self.tap.services_resolved()
+        self.tap.start(runtime=1, zone=2)
+        self.assertEqual(next_auth.written, [b"\xae\x8e"])
+        self.assertEqual(self.auth.written, [])
+        self.tap.characteristic_write_value_succeeded(next_auth)
+        self.assertEqual(next_manual.written, [b"\x01\x01\x00\x01"])
+        self.assertEqual(self.manual.written, [])
+
 class LegacyCliTests(unittest.TestCase):
     def test_old_cli_spellings_preserved(self):
         for flag in ("--start", "--stop", "--minutes", "--zone", "--connect", "--auto", "--disconnect", "--known", "--discover"):
@@ -235,6 +329,13 @@ class LegacyCliTests(unittest.TestCase):
                         holmanctl.main()
                     self.assertEqual(context.exception.code, 2)
                     holman_module.TapTimerManager.assert_not_called()
+
+class FakeGattIsolationTests(unittest.TestCase):
+    def test_no_permanent_fake_gatt_in_sys_modules(self):
+        self.assertIsNot(sys.modules.get("gatt"), fake_gatt)
+        self.assertNotIn("_bx2_offline_holman", sys.modules)
+        self.assertNotIn("_bx2_offline_holman.holman", sys.modules)
+        self.assertIsNot(sys.modules.get("holman"), holman)
 
 class CliCallbackIntegrationTests(unittest.TestCase):
     def invoke(self, *args):
