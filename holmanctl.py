@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
 
 import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 import holman
 
 tap_timer_manager = None
+
+
+def valid_minutes(value):
+    """Fail closed on invalid CLI watering runtimes before creating a device."""
+    try:
+        runtime = int(value)
+    except ValueError:
+        raise ArgumentTypeError("minutes must be a whole number from 1 to 255")
+    if not 1 <= runtime <= 255:
+        raise ArgumentTypeError("minutes must be between 1 and 255")
+    return runtime
+
+
 
 
 class TapTimerPrintListener(holman.TapTimerListener):
@@ -41,7 +54,17 @@ class TapTimerTestListener(TapTimerPrintListener):
     def connect_failed(self, error):
         super().connect_failed(error)
         tap_timer_manager.stop()
-        sys.exit(0)
+        sys.exit(1)
+
+    def timer_written(self):
+        self.print("timer written")
+        if getattr(self, "one_shot", False):
+            self.tap_timer.disconnect()
+
+    def timer_write_failed(self, error):
+        self.print("timer write failed: " + str(error))
+        tap_timer_manager.stop()
+        sys.exit(1)
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
@@ -100,8 +123,8 @@ def main():
         metavar='address',
         type=str,
         help="Connect and send all-off")
-    arg_parser.add_argument('--minutes', type=int, default=2, help="Minutes for --start")
-    arg_parser.add_argument('--zone', type=int, default=1, help="Zone 1 (tap index 0) or 2 (tap index 1). Default 1")
+    arg_parser.add_argument('--minutes', type=valid_minutes, default=2, help="Minutes for --start")
+    arg_parser.add_argument('--zone', type=int, choices=(1, 2), default=1, help="Zone 1 (tap index 0) or 2 (tap index 1). Default 1")
     args = arg_parser.parse_args()
 
     global tap_timer_manager
@@ -130,6 +153,8 @@ def main():
         tap_timer = holman.TapTimer(mac_address=args.start, manager=tap_timer_manager)
 
         class StartListener(TapTimerTestListener):
+            one_shot = True
+
             def connect_succeeded(self):
                 super().connect_succeeded()
                 print(f"starting zone={args.zone} minutes={args.minutes}")
@@ -141,6 +166,8 @@ def main():
         tap_timer = holman.TapTimer(mac_address=args.stop, manager=tap_timer_manager)
 
         class StopListener(TapTimerTestListener):
+            one_shot = True
+
             def connect_succeeded(self):
                 super().connect_succeeded()
                 print("stopping")

@@ -191,6 +191,8 @@ class TapTimer(gatt.Device):
         self._manual_characteristic = None
         self._state_characteristic = None
         self._auth_characteristic = None
+        # DBus completes writes asynchronously; hold f006 until c001 callback.
+        self._pending_manual_payload = None
         self._state = bytes([0])
 
     def connect(self):
@@ -206,6 +208,7 @@ class TapTimer(gatt.Device):
         super().connect()
 
     def connect_failed(self, error):
+        self._pending_manual_payload = None
         super().connect_failed(error)
         if self.listener:
             self.listener.connect_failed(error)
@@ -222,12 +225,14 @@ class TapTimer(gatt.Device):
         super().disconnect()
 
     def disconnect_succeeded(self):
+        self._pending_manual_payload = None
         super().disconnect_succeeded()
         if self.listener:
             self.listener.disconnect_succeeded()
 
     def services_resolved(self):
         super().services_resolved()
+        self._pending_manual_payload = None
 
         accepted = {uuid.lower() for uuid in self.service_uuids}
         holman_service = next((
@@ -290,45 +295,90 @@ class TapTimer(gatt.Device):
         """The name of the tap timer."""
         return str(self.alias())
 
-    def _unlock(self):
-        """
-        Session unlock so the tap will accept f006 start/stop writes.
+    def _write_manual(self, value):
+        """Write f006 only after the optional asynchronous c001 unlock.
 
-        BX1/BX2 expose GATT c001; writing AE 8E unlocks the session for
-        subsequent f006 manual control. If c001 is missing, no-op.
+        An urgent stop can supersede a start waiting for the unlock callback.
+        Devices without c001 retain the original direct f006 behaviour.
         """
-        if self._auth_characteristic:
+        if self._manual_characteristic is None:
+            return
+        if self._pending_manual_payload is not None:
+            if value == bytes(4):
+                self._pending_manual_payload = value
+                return
+            raise RuntimeError("previous Holman unlock is still pending")
+        if self._auth_characteristic is None:
+            self._manual_characteristic.write_value(value)
+            return
+        self._pending_manual_payload = value
+        try:
             self._auth_characteristic.write_value(self.AUTH_PAYLOAD)
+        except Exception as error:
+            self._pending_manual_payload = None
+            if value == bytes(4):
+                # Attempt all-off even if unlock failed; report if it fails.
+                try:
+                    self._manual_characteristic.write_value(value)
+                except Exception as stop_error:
+                    if self.listener:
+                        self.listener.timer_write_failed(stop_error)
+                    else:
+                        raise
+            elif self.listener:
+                self.listener.timer_write_failed(error)
+            else:
+                raise
 
     def start(self, runtime=1, zone=1):
-        '''
-        Turn on the tap for ``runtime`` minutes.
-
-        f006 start is ``[0x01, tap_index, 0x00, minutes]``. Byte 0 is on
-        (0x01). Byte 1 is the tap index: 0x00 = zone 1, 0x01 = zone 2
-        (hex ``010100NN`` for zone 2). Zone 1 matches the original SDK ON
-        payload ``01 00 00 <mins>``.
-        '''
-        runtime = 255 if runtime > 255 else max(1, int(runtime))
-        zone = max(1, min(int(zone), 2))
-        tap = 0x00 if zone == 1 else 0x01
-        self._unlock()
-        if self._manual_characteristic:
-            value = bytes([0x01, tap, 0x00, runtime])
-            self._manual_characteristic.write_value(value)
+        """Start the requested outlet for 1-255 minutes (zone 1 by default)."""
+        if zone not in (1, 2) or isinstance(zone, bool):
+            raise ValueError("BX2 zone must be 1 (Sprinkler) or 2 (Hose)")
+        runtime = min(255, max(1, int(runtime)))
+        value = bytes([1, zone - 1, 0, runtime])
+        self._write_manual(value)
 
     def stop(self):
-        """Turn off the tap."""
-        self._unlock()
-        if self._manual_characteristic:
-            value = bytes([0x00, 0x00, 0x00, 0x00])
-            self._manual_characteristic.write_value(value)
+        """Send the same all-zero stop command on every supported model."""
+        self._write_manual(bytes(4))
 
     def characteristic_write_value_succeeded(self, characteristic):
+        if characteristic == self._auth_characteristic:
+            if self._pending_manual_payload is not None:
+                value = self._pending_manual_payload
+                self._pending_manual_payload = None
+                try:
+                    self._manual_characteristic.write_value(value)
+                except Exception as error:
+                    if self.listener:
+                        self.listener.timer_write_failed(error)
+                    else:
+                        raise
+            return
         self._refresh_state()
+        if characteristic == self._manual_characteristic and self.listener:
+            self.listener.timer_written()
 
     def characteristic_write_value_failed(self, characteristic, error):
+        if characteristic == self._auth_characteristic:
+            if self._pending_manual_payload is not None:
+                value = self._pending_manual_payload
+                self._pending_manual_payload = None
+                if value == bytes(4):
+                    # Still attempt emergency all-off after rejected unlock.
+                    try:
+                        self._manual_characteristic.write_value(value)
+                    except Exception as write_error:
+                        if self.listener:
+                            self.listener.timer_write_failed(write_error)
+                        else:
+                            raise
+                elif self.listener:
+                    self.listener.timer_write_failed(error)
+            return
         self._refresh_state()
+        if characteristic == self._manual_characteristic and self.listener:
+            self.listener.timer_write_failed(error)
 
 
 class TapTimerListener:
@@ -349,4 +399,12 @@ class TapTimerListener:
         pass
 
     def disconnect_succeeded(self):
+        pass
+
+    def timer_written(self):
+        """Called once an f006 manual start/stop write completes."""
+        pass
+
+    def timer_write_failed(self, error):
+        """Called if a queued c001/f006 manual write fails."""
         pass
